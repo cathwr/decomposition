@@ -440,10 +440,39 @@ savefig(P4, joinpath(git_root, "data_output", "BATS_temperature_excess_time.png"
 ## Plot Temp redistri versus time as a heatmap
 profile_mat = zeros(length(pr_grid), length(uniq_dates))
 for (i, yr) in enumerate(uniq_dates)
-    profile_mat[:, i] = excess_temp_profiles[yr]
+    profile_mat[:, i] = redist_temp_profiles[yr]
 end
 
-P4=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
-ylabel="Pressure (db)", title="Θe profiles over Time", yflip=true, colorbar=true, cmap=:bwr,
-clim=(-0.5,0.5),)
+P5=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
+ylabel="Pressure (db)", title="Θredistri profiles over Time", yflip=true, colorbar=true, cmap=:bwr,)
+#clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
+savefig(P5, joinpath(git_root, "data_output", "BATS_temperature_redistri_time.png"))
+
+
+# Plot of the DIC-Temperature values
+P6=Plots.scatter(DIC, TMP, zcolor=decimal_year, markersize=5, alpha=0.4, 
+   legend=false, colorbar=true, xlabel="DIC", ylabel="Temperature",cmap = :jet1,)
+
+savefig(P6, joinpath(git_root, "data_output", "BATS_temperature_DIC_time.png"))
+# Plot of the DIC-Salinity values
+P7=Plots.scatter(DIC, SAL, zcolor=decimal_year, markersize=5, alpha=0.4, 
+   legend=false, colorbar=true, xlabel="DIC", ylabel="Salinity",cmap = :jet1,)
+
+savefig(P7, joinpath(git_root, "data_output", "BATS_Salinity_DIC_time.png"))
+
+###### SAVE THE DATA OUT ######
+
+# Save the data out
+sorted_pairs = sort(collect(excess_temp_profiles), by=first)
+sorted_columns = [Symbol(k)=>v for (k,v) in sorted_pairs]
+
+DataFrame(;sorted_columns..., Pressure_db=pr_grid) |>
+    CSV.write(joinpath(git_root, "output_files", "BATS_excess_temp_profiles.csv"), header=true)
+
+
+sorted_pairs = sort(collect(redist_temp_profiles), by=first)
+sorted_columns = [Symbol(k)=>v for (k,v) in sorted_pairs]
+
+DataFrame(;[Symbol(k)=>v for (k,v) in redist_temp_profiles]..., Pressure_db=pr_grid) |>
+    CSV.write(joinpath(git_root, "output_files", "bats_redist_temp_profiles.csv"), header=true)
