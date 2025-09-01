@@ -1,0 +1,66 @@
+/Comments
+Filename: ALL_Carbon_data_WHOTS_BATS_HOT_ALOHA.txt
+Datafile containing all the data from the WHOTS time-series station (pCO2 continuous measurements), BATS time-series station (discrete data), HOT surface CO2 data and ALOHA (i.e. HOT station) discrete carbon measurements (entire water column) 
+
+
+Station_Name 		= station name and ID
+Latitude_N   		= Latitude (Deg N) 
+Longitude_W     	= Longitude (Deg W)
+Date  			= mm/dd/yyyy
+Time   			= Time (hh:mm)  
+Temperature     	= Temperature ITS-90 (C)     
+Salinity   		= Salinity (PSS-78) 
+pCO2SW_Uatm		= Partial Pressure of CO2 in air in equilibrium with the seawater at sea surface temperature (100% humidity) (uatm) 
+CO2SWQF_WHOTS   	= CO2_seawater data QF (only for the WHOTS data, 2 = acceptable measurement, 3 = questionable measurement/or adjusted, 4 = bad measurement) 
+pCO2Air_Uatm    	= Partial Pressure of CO2 in air at the airblock, 4 feet above the sea surface (100% humidity) (uatm)
+Doxy_Umolkg		= Oxygen (umol/kg)
+DoxyQF	 		= Oxygen QF (only for the WHOTS data, 2 = acceptable measurement, 3 = questionable measurement, 4 = bad measurement) 
+QF_BATS    		= Quality flag for the BATS data (-3 = suspect, 1=unverified, 2= verified/acceptable)
+Depth_m 		= Depth (m) 
+Pressure_db 		= Pressure (db)  
+
+DIC_Umolkg    		= dissolved inorganic carbon (umol/kg)  
+Alk_Umolkg    		= total alkalinity (umol/kg)  
+Nitrate_Nitrite_Umolkg  = Nitrate+Nitrite (umol/kg)  
+Nitr_Umolkg     	= Nitrite (umol/kg)
+Phos_Umolkg     	= Phosphate (umol/kg) 
+Sil_Umolkg 		= Silicate (umol/kg) 
+              
+/Quality Flag
+NaN = Bad or missing data
+
+//////////////////////////////////////
+
+%%%%%%%%%%% pCO2 time-series high-temporal resolution %%%%%%%%%%
+
+- WHOTS:  https://www.pmel.noaa.gov/co2/story/WHOTS
+WHOI Hawaii Ocean Time-series Station (WHOTS) Mooring (22.7°N, 157.9°W)
+Mooring near the HOT site with a  MAPCO2 system installed since 2007. A surface seawater pH sensor was added in 2011. 
+
+http://uop.whoi.edu/currentprojects/WHOTS/whots.html
+
+DATA access: https://www.ncei.noaa.gov/access/ocean-carbon-acidification-data-system/oceans/Moorings/WHOTS_158W_23N.html
+and https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0100080/
+
+
+%%%%%%%%%%% carbon time-series - discrete measurements %%%%%%%%%%
+
+
+- BATS: Bermudas Time-series: https://bios.asu.edu/bats/data
+
+Carbon data since 1991. The file bval_bottle.txt is the one used (https://bios.asu.edu/bats/bats-data) - data validated between 1991 and 2023. 
+
+
+- HOT: Hawaii Ocean Time-series: https://hahana.soest.hawaii.edu/hot/
+
+Carbon data since 1988. Extraction of the bottle data for the ALOHA site
+
+HOT-DOGS: interface to download the data: https://hahana.soest.hawaii.edu/hot/hot-dogs/interface.html
+
+
+- HOT surface data: https://hahana.soest.hawaii.edu/hot/hotco2/HOT_surface_CO2.txt
+All data from the ALOHA station averaged between 0 and 30 dbar. From 1988 to 2023.
+ 
+Metadata: https://hahana.soest.hawaii.edu/hot/hotco2/HOT_surface_CO2_readme.pdf
+
+

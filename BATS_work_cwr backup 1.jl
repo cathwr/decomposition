@@ -15,6 +15,14 @@ data_dir = joinpath(git_root, "data_input")
 data_files = glob("*.txt", data_dir)
 
 
+# Part of the script to update the checksums file
+using JSON
+checksums = Dict(basename(file) => checksum(joinpath(data_dir, file)) for file in data_files)
+open(joinpath(git_root, "data_input", "checksums.json"), "w") do io
+    JSON.print(io, checksums, 4)   # joli JSON indenté
+end
+
+
 """
 Takes a path to a file and returns the SHA256 checksum of the file.
 """
@@ -35,14 +43,6 @@ function checksum(file_path::String)
     # Finalize and get the digest
     return bytes2hex(SHA.digest!(ctx))
 end
-
-# Part of the script to update the checksums file
-using JSON
-checksums = Dict(basename(file) => checksum(joinpath(data_dir, file)) for file in data_files)
-open(joinpath(git_root, "data_input", "checksums.json"), "w") do io
-    JSON.print(io, checksums, 4)   # joli JSON indenté
-end
-
 
 """
 Loads the checksum file and returns a dictionary of checksums.
@@ -80,14 +80,14 @@ saved_checksums = load_checksums()
 using DataFrames
 using CSV
 using Pluto
-#Pluto.run() --> open a Pluto notebook on your browser
+Pluto.run()
 # Load the dataset
 
 bats_df = CSV.read(joinpath(git_root, "data_input", "BATS_Carbon_discrete_with_QF.txt"), DataFrame)
 
 
 bats_df
-# SOME CHECKS
+# Let's just do a couple of minor checks that we haven't moved around too much.
 using Plots
 using Dates
 
@@ -98,65 +98,3 @@ date = Date.(clean_dates, DateFormat("mm/dd/yyyy"))
 # Convert it to a decimal year ie. 2023.5 - needed to plot date as a colour
 decimal_year = year.(date) .+ (month.(date) .- 1) ./ 12 .+ day.(date) ./ 365.25
 p1 = scatter(bats_df[!, :Longitude_W], bats_df[!, :Latitude_N], zcolor=decimal_year, xlabel="Longitude", ylabel="Latitude", title="Scatter of Latitude and Longitude over Time", color=:viridis)
-savefig(p1, joinpath(git_root, "data_output", "BATS_Lat_Long_scatter.png"))
-
-
-#### PLOT to see where the datapoints are 
-using CairoMakie
-using GeoMakie
-using GeoMakie.GeoJSON
-using NaturalEarth
-
-fig = Figure(size = (900, 600))
-
-x_ticks = collect(range(-78, 0, step=2))  # Every 4 degrees from -90 to 0
-y_ticks = collect(range(20, 40, step=1))  # Every 2 degrees from 20 to 45
-
-# Create a GeoAxis with sensible limits
-ax = GeoAxis(fig[1,1]; 
-    # Set limits using the limits parameter instead
-    limits = ((-85, -4), (20, 50)),  # (lon_min, lon_max), (lat_min, lat_max)
-    xticks = x_ticks,
-    yticks = y_ticks,
-)
-
-# Add scatter plot
-GeoMakie.scatter!(ax, -bats_df[!, :Longitude_W], bats_df[!, :Latitude_N], 
-    color=decimal_year, colormap=:viridis, 
-    markersize=8)
-
-# Add continents
-poly!(ax, GeoMakie.land())
-
-# Add title 
-ax.title = "BATS obs locations in North Atlantic"
-
-fig # Display the figure
-
-# Narrowing of the dataset to constraint to the BATS region
-n_obs = size(bats_df, 1)
-println("There are $n_obs observations in the full dataset.")
-
-filtered_df = bats_df[62 .< bats_df[!, :Longitude_W] .< 66, :]
-filtered_df = filtered_df[31 .< filtered_df[!, :Latitude_N] .< 33, :]
-
-println("There are $(size(filtered_df, 1)) observations in the filtered dataset prior to filtering for DIC.")
-
-@info "Filtering all observations without a DIC value"
-
-filtered_df = filter(row -> !isnan(row[:DIC_Umolkg]), filtered_df)
-
-println("There are $(size(filtered_df, 1)) observations in the filtered dataset after filtering for DIC.")
-
-filtered_df = filter(row -> row[:Pressure_db] < 500, filtered_df)
-
-println("There are $(size(filtered_df, 1)) observations in the filtered dataset after filtering for DIC and the top 500m.")
-
-clean_dates2 = strip.(first.(split.(filtered_df[!, :Date], ",")))
-date = Date.(clean_dates2, DateFormat("mm/dd/yyyy"))
-# Convert it to a decimal year ie. 2023.5 - needed to plot date as a colour
-decimal_year = year.(date) .+ (month.(date) .- 1) ./ 12 .+ day.(date) ./ 365.25
-
-p2 = scatter(decimal_year, filtered_df[!, :Depth_m], zcolor=filtered_df[!, :DIC_Umolkg], xlabel="Time", ylabel="Pressure [db]", yflip=true, legend= false, colorbar=true, clabel = "DIC [µmol/kg]")
-savefig(p2, joinpath(git_root, "data_output", "BATS_scatter_depth_DIC_TS.png"))
-
