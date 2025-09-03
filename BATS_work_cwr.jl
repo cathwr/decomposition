@@ -98,7 +98,7 @@ date = Date.(clean_dates, DateFormat("mm/dd/yyyy"))
 # Convert it to a decimal year ie. 2023.5 - needed to plot date as a colour
 decimal_year = year.(date) .+ (month.(date) .- 1) ./ 12 .+ day.(date) ./ 365.25
 p1 = scatter(bats_df[!, :Longitude_W], bats_df[!, :Latitude_N], zcolor=decimal_year, xlabel="Longitude", ylabel="Latitude", title="Scatter of Latitude and Longitude over Time", color=:viridis)
-savefig(p1, joinpath(git_root, "data_output", "BATS_Lat_Long_scatter.png"))
+savefig(p1, joinpath(git_root, "data_output/BATS", "BATS_Lat_Long_scatter.png"))
 
 
 #### PLOT to see where the datapoints are 
@@ -129,9 +129,11 @@ GeoMakie.scatter!(ax, -bats_df[!, :Longitude_W], bats_df[!, :Latitude_N],
 poly!(ax, GeoMakie.land())
 
 # Add title 
-ax.title = "BATS obs locations in North Atlantic"
+ax.title = "BATS observation locations -  North Atlantic"
 
 fig # Display the figure
+save(joinpath(git_root, "data_output/BATS", "BATS_Lat_Long_scatter.png"), fig)
+
 
 # Narrowing of the dataset to constraint to the BATS region
 n_obs = size(bats_df, 1)
@@ -158,7 +160,11 @@ date = Date.(clean_dates2, DateFormat("mm/dd/yyyy"))
 decimal_year = year.(date) .+ (month.(date) .- 1) ./ 12 .+ day.(date) ./ 365.25
 
 p2 = scatter(decimal_year, filtered_df[!, :Depth_m], zcolor=filtered_df[!, :DIC_Umolkg], xlabel="Time", ylabel="Pressure [db]", yflip=true, legend= false, colorbar=true, clabel = "DIC [µmol/kg]",ylim = (0,800))
-savefig(p2, joinpath(git_root, "data_output", "BATS_scatter_depth_DIC_TS.png"))
+savefig(p2, joinpath(git_root, "data_output/BATS", "BATS_scatter_depth_DIC_TS.png"))
+
+p2 = scatter(decimal_year, filtered_df[!, :Depth_m], zcolor=filtered_df[!, :Temperature], xlabel="Time", ylabel="Pressure [db]", yflip=true, legend= false, colorbar=true, clabel = "Temperature [ºC]",ylim = (0,800))
+savefig(p2, joinpath(git_root, "data_output/BATS", "BATS_scatter_depth_Temp_TS.png"))
+
 
 # Using of the earliest data as possible profile to construct our T-DIC curve
 # Round the date and pool the data together 
@@ -434,7 +440,7 @@ P4=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year"
 ylabel="Pressure (db)", title="BATS - Θe profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
-savefig(P4, joinpath(git_root, "data_output", "BATS_temperature_excess_time.png"))
+savefig(P4, joinpath(git_root, "data_output/BATS", "BATS_temperature_excess_time.png"))
 
 ## Plot Temp redistri versus time as a heatmap
 profile_mat = zeros(length(pr_grid), length(uniq_dates))
@@ -446,23 +452,23 @@ P5=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year"
 ylabel="Pressure (db)", title="Θredistri profiles over Time", yflip=true, colorbar=true, cmap=:bwr,)
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
-savefig(P5, joinpath(git_root, "data_output", "BATS_temperature_redistri_time.png"))
+savefig(P5, joinpath(git_root, "data_output/BATS", "BATS_temperature_redistri_time.png"))
 
 ## Plot Kr versus time as scatter
 kr_profile = κr_profiles[uniq_dates[1]] # pick juste one date
 P8 = Plots.plot(kr_profile, pr_grid, color=:black,linewidth=5, yflip=true, legend = false, xlabel="κr_profile", ylabel="Pressure (db)", title="BATS - κr profile for year $(uniq_dates[1])")
-savefig(P8, joinpath(git_root, "data_output", "BATS_Kr_time.png"))
+savefig(P8, joinpath(git_root, "data_output/BATS", "BATS_Kr_time.png"))
 
 # Plot of the DIC-Temperature values
 P6=Plots.scatter(DIC, TMP, zcolor=decimal_year, markersize=5, alpha=0.4, 
    legend=false, colorbar=true, xlabel="DIC", ylabel="Temperature",cmap = :jet1,)
 
-savefig(P6, joinpath(git_root, "data_output", "BATS_temperature_DIC_time.png"))
+savefig(P6, joinpath(git_root, "data_output/BATS", "BATS_temperature_DIC_time.png"))
 # Plot of the DIC-Salinity values
 P7=Plots.scatter(DIC, SAL, zcolor=decimal_year, markersize=5, alpha=0.4, 
    legend=false, colorbar=true, xlabel="DIC", ylabel="Salinity",cmap = :jet1,)
 
-savefig(P7, joinpath(git_root, "data_output", "BATS_Salinity_DIC_time.png"))
+savefig(P7, joinpath(git_root, "data_output/BATS", "BATS_Salinity_DIC_time.png"))
 
 ###### SAVE THE DATA OUT ######
 
@@ -482,7 +488,7 @@ DataFrame(;[Symbol(k)=>v for (k,v) in redist_temp_profiles]..., Pressure_db=pr_g
 
 
 
-##### TEST with anotehr Temp excess - redistri function
+##### TEST with another Temp excess - redistri function
 function ExcessRedistTempSalFromTempSalDIC(init_temp::Vector{Float64},final_temp::Vector{Float64}
     ,init_DIC::Vector{Float64},final_DIC::Vector{Float64}
     ,init_Sal::Vector{Float64},final_Sal::Vector{Float64}
@@ -579,7 +585,7 @@ P12=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year
 ylabel="Pressure (db)", title="BATS - Θe profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
-savefig(P12, joinpath(git_root, "data_output", "BATS_temperature_excess_time_OTHER_FUNCTION.png"))
+savefig(P12, joinpath(git_root, "data_output/BATS", "BATS_temperature_excess_time_OTHER_FUNCTION.png"))
 ## Plot Temp excess (OTHER METHOD) versus time as a heatmap
 profile_mat = zeros(length(pr_grid), length(uniq_dates))
 for (i, yr) in enumerate(uniq_dates)
@@ -590,7 +596,7 @@ P13=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year
 ylabel="Pressure (db)", title="BATS - Θredistri profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
-savefig(P13, joinpath(git_root, "data_output", "BATS_temperature_redistri_time_OTHER_FUNCTION.png"))
+savefig(P13, joinpath(git_root, "data_output/BATS", "BATS_temperature_redistri_time_OTHER_FUNCTION.png"))
 
 ## Plot SAL excess (OTHER METHOD) versus time as a heatmap
 profile_mat = zeros(length(pr_grid), length(uniq_dates))
@@ -602,7 +608,7 @@ P14=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year
 ylabel="Pressure (db)", title="BATS - SAL-e profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
-savefig(P14, joinpath(git_root, "data_output", "BATS_salinity_excess_time_OTHER_FUNCTION.png"))
+savefig(P14, joinpath(git_root, "data_output/BATS", "BATS_salinity_excess_time_OTHER_FUNCTION.png"))
 ## Plot SAL excess (OTHER METHOD) versus time as a heatmap
 profile_mat = zeros(length(pr_grid), length(uniq_dates))
 for (i, yr) in enumerate(uniq_dates)
@@ -613,4 +619,4 @@ P15=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year
 ylabel="Pressure (db)", title="BATS - SAL-redistri profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
-savefig(P15, joinpath(git_root, "data_output", "BATS_salinity_redistri_time_OTHER_FUNCTION.png"))
+savefig(P15, joinpath(git_root, "data_output/BATS", "BATS_salinity_redistri_time_OTHER_FUNCTION.png"))
