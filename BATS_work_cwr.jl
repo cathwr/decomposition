@@ -186,13 +186,17 @@ filtered_df
 
 using Statistics 
 using DIVAnd
-
+gsw = pyimport("gsw")
 DIC = filtered_df[!, :DIC_Umolkg]
+ALK = filtered_df[!, :Alk_Umolkg]
 SAL = filtered_df[!, :Salinity]
 TMP = filtered_df[!, :Temperature]
 LAT = filtered_df[!, :Latitude_N] |> float
 LON = filtered_df[!, :Longitude_W] |> float
 PRS = filtered_df[!, :Pressure_db]
+NITR = filtered_df[!, :Nitr_Umolkg]
+PHOS = filtered_df[!, :Phos_Umolkg]
+SILI = filtered_df[!, :Sil_Umolkg]
 
 # Calculate potential temperature
 SA = gsw.SA_from_SP(SAL, PRS, LON, LAT) # Absolute Salinity
@@ -729,3 +733,272 @@ ylabel="Pressure (db)", title="DIC redistri profiles over Time", yflip=true, col
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
 savefig(P5, joinpath(git_root, "data_output/BATS", "BATS_DIC_redistri_time.png"))
+
+
+
+
+
+function decompose_DIC(init_temp::Vector{Float64},final_temp::Vector{Float64}
+    ,init_DIC::Vector{Float64},final_DIC::Vector{Float64}
+    ;transient_val::Float64=0.017
+    ,gaussian_width::Float64=0.0001)::Tuple{Vector{Float64}, Vector{Float64}} # tuples have a fixed size and their elements can have different types
+ 
+#= 
+The gaussain width is used to switch out the more complicated decomposition 
+(mat2) with the simpler one (mat1) when the DIC gradient is small. This is 
+what I got from cancelling the infinities out on paper - they wont on a computer 
+unfortunately, so it has to be done by hand.
+=#
+
+@assert size(init_temp) == size(final_temp) &&
+size(init_DIC) == size(final_DIC) &&
+size(init_temp) == size(init_DIC) "All input vectors (\"init_temp\", \"final_temp\", \"init_DIC\", \"final_DIC\") must have the same size"
+
+VEC_LENGTH::Int64 = length(init_temp)
+
+ζ = central_diff(init_DIC)
+ξ = central_diff(init_temp)
+
+κr = ξ ./ ζ
+
+
+weight1 = gaussian(ζ,σ = gaussian_width)
+weight2 = (weight1 .- 1.0) ./ (transient_val .-  κr )
+
+mat1 = fill(NaN,2,2,VEC_LENGTH)
+mat2 = fill(NaN,2,2,VEC_LENGTH)
+mat3 = fill(NaN,2,2,VEC_LENGTH)
+
+for i = 1:length(κr)
+mat1[:,:,i] = [0               transient_val
+;1              -transient_val]
+
+mat2[:,:,i] = [-1   κr[i]
+;1          -transient_val]
+
+mat3[:,:,i] = [(1/transient_val) 0
+;0              (1/κr[i])]
+end
+
+ΔΘ = final_temp - init_temp
+ΔDIC = final_DIC - init_DIC
+
+input_vec = fill(NaN,2,VEC_LENGTH); output_vec = copy(input_vec)
+input_vec[1,:] = ΔΘ
+input_vec[2,:] = ΔDIC
+
+for i =1:VEC_LENGTH
+output_vec[:,i] = (weight1[i] * (mat1[:,:,i] * mat3[:,:,i]) + weight2[i] * mat2[:,:,i]) * input_vec[:,i]
+end
+
+excess_DIC = output_vec[1,:]
+redist_DIC = output_vec[2,:]
+
+return excess_DIC, redist_DIC
+end
+
+
+excess_DIC_profiles = Dict{Float64, Vector{Float64}}()
+redist_DIC_profiles = Dict{Float64, Vector{Float64}}()
+
+init_yr = uniq_dates[1] #can be change if I want antohet inital year
+
+for yr in uniq_dates
+excess_DIC_profiles[yr], redist_DIC_profiles[yr] = decompose_DIC(
+gridded_TMP[init_yr], gridded_TMP[yr],
+gridded_DIC[init_yr], gridded_DIC[yr],
+transient_val=0.017,
+gaussian_width=0.0001
+)
+end
+
+
+## Plot Temp excess versus time as a heatmap
+profile_mat = zeros(length(pr_grid), length(uniq_dates))
+for (i, yr) in enumerate(uniq_dates)
+profile_mat[:, i] = excess_DIC_profiles[yr]
+end
+
+P4=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
+ylabel="Pressure (db)", title="BATS - DIC_excess profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
+#clim=(-0.5,0.5),)
+Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
+savefig(P4, joinpath(git_root, "data_output/BATS", "BATS_DIC_excess_time.png"))
+
+## Plot Temp redistri versus time as a heatmap
+profile_mat = zeros(length(pr_grid), length(uniq_dates))
+for (i, yr) in enumerate(uniq_dates)
+profile_mat[:, i] = redist_DIC_profiles[yr]
+end
+
+P5=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
+ylabel="Pressure (db)", title="BATS - DIC redistri profiles over Time", yflip=true, colorbar=true, cmap=:bwr,)
+#clim=(-0.5,0.5),)
+Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
+savefig(P5, joinpath(git_root, "data_output/BATS", "BATS_DIC_redistri_time.png"))
+
+
+## Determination of the pCO2 ocean usign CO2SYS 
+
+using Pkg
+# need to be in pkg mode i.e. ] to enter
+#add https://github.com/mvdh7/CO2System.jl
+using CO2System
+par1type =    1 # The first parameter supplied is of type "1", which is "alkalinity"
+par1     = ALK # value of the first parameter
+par2type =    2 # The first parameter supplied is of type "1", which is "DIC"
+par2     = DIC # value of the second parameter, which is a long vector of different DIC"s!
+sal      =   SAL # Salinity of the sample
+tempin   =   TMP # Temperature at input conditions
+presin   =    PRS # Pressure    at input conditions
+tempout  =    25 # Temperature at output conditions - doesn't matter in this example
+presout  =    0 # Pressure    at output conditions - doesn't matter in this example
+sil      =   1  # Concentration of silicate  in the sample (in umol/kg)
+po4      =    1 # Concentration of phosphate in the sample (in umol/kg)
+pHscale  =    1 # pH scale at which the input pH is reported ("1" means "Total Scale")  - doesn't matter in this example
+k1k2c    =    4 # Choice of H2CO3 and HCO3- dissociation constants K1 and K2 ("4" means "Mehrbach refit")
+kso4c    =    1 # Choice of HSO4- dissociation constants KSO4 ("1" means "Dickson")
+
+A = CO2SYS(par1,par2,par1type,par2type,sal,tempin,tempout,presin,presout,
+    sil,po4,pHscale,k1k2c,kso4c)[1]  ## [1] = data, [2] = header, [3] = nice header
+
+    # The calculated pCO2's are in the 4th column of the output A of CO2SYS
+sp1 = Plots.scatter(A[:,3], par2, color=:red, label="", ylabel="DIC", xlabel="pH", title="DIC vs pCO2",
+marker=(:circle))
+
+
+P7=Plots.scatter(A[:,4], par2, zcolor=decimal_year, markersize=5, alpha=0.4, 
+   legend=false, colorbar=true, ylabel="DIC", xlabel="pCO2", title="DIC vs pCO2",cmap = :viridis,)
+
+savefig(P7, joinpath(git_root, "data_output/BATS", "BATS_pCO2_DIC_time.png"))
+
+#### Heatmap with the time as x axis and depth as y axis and pCO2 as color
+
+
+uniq_dates = unique(year.(date))
+profile_mat = fill(NaN, length(pr_grid), length(uniq_dates))
+
+using Statistics, LinearAlgebra
+using Interpolations
+
+for (i, yr) in enumerate(uniq_dates)
+    idx = findall(year.(date) .== yr)
+    vals = A[idx, 4] ##pCO2 in situ
+    depths = A[idx, 43] ## depth
+
+    if length(vals) < 20
+        profile_mat[:, i] .= NaN
+        continue
+    end
+
+    # tri par profondeur
+    p = sortperm(depths)
+    depths_sorted = depths[p]
+    vals_sorted   = vals[p]
+
+    # interpolation linéaire + extrapolation (NaN en dehors)
+    itp = extrapolate(interpolate((depths_sorted,), vals_sorted, Gridded(Linear())), NaN)
+
+    profile_mat[:, i] = [itp(d) for d in pr_grid]
+end
+
+
+P5 = Plots.heatmap(uniq_dates, pr_grid, profile_mat,
+    xlabel="Year", ylabel="Pressure (db)",
+    title="pCO2 profiles over Time",
+    yflip=true, ylim=(0,1000),
+    colorbar=true) ### La colorbar ne s'adapte pas automatiquement si je coupe l'echelle y, je dois la modifier modifier manuellement
+savefig(P5, joinpath(git_root, "data_output/BATS", "BATS_pCO2_time.png"))
+    ### Code ci-dessous avec ajustement de la colorbar si je coupe l'echelle y
+
+    mask = pr_grid .<= 300
+vals = profile_mat[mask, :]
+P6=Plots.heatmap(uniq_dates, pr_grid[mask], vals,
+    yflip=true, xlabel="Year", ylabel="Pressure (db)",
+  colorbar=true, #   cmap=:bwr
+    clim=(minimum(vals), maximum(vals)))
+
+#Plots.contour!(uniq_years, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
+
+ savefig(P6, joinpath(git_root, "data_output/BATS", "BATS_pCO2_300m_time.png"))
+
+ using Statistics
+
+"""
+    pco2_components(pco2_obs, sst; Tref=nothing, pCO2ref=nothing)
+
+Decompose observed pCO2 time series into thermal and non-thermal components.
+
+- `pco2_obs`: Vector of observed pCO2 (µatm)
+- `sst`: Vector of sea surface temperature (°C), same length
+- `Tref`: reference temperature (default = mean(sst))
+- `pCO2ref`: reference pCO2 (default = mean(pco2_obs))
+"""
+
+profile_mat_sst = fill(NaN, length(pr_grid), length(uniq_dates))
+
+for (i, yr) in enumerate(uniq_dates)         #loop to determine the sst profile mat 
+    idx = findall(year.(date) .== yr)
+    vals = A[idx, 41]
+    depths = A[idx, 43]
+
+    if length(vals) < 20
+        profile_mat_sst[:, i] .= NaN
+        continue
+    end
+
+    # tri par profondeur
+    p = sortperm(depths)
+    depths_sorted = depths[p]
+    vals_sorted   = vals[p]
+
+    # interpolation linéaire + extrapolation (NaN en dehors)
+    itp = extrapolate(interpolate((depths_sorted,), vals_sorted, Gridded(Linear())), NaN)
+
+    profile_mat_sst[:, i] = [itp(d) for d in pr_grid]
+end
+
+mask = pr_grid .<= 100
+sst = profile_mat_sst[mask, :]
+pCO2_obs = profile_mat[mask, :]
+pCO2ref = mean(filter(!isnan, pCO2_obs))
+Tref = mean(filter(!isnan, sst))  
+function pco2_components(pco2_obs, sst; Tref=Tref, pCO2ref=pCO2ref)
+    @assert length(pco2_obs) == length(sst)
+
+    # defaults
+    Tref = isnothing(Tref) ? mean(skipmissing(sst)) : Tref
+    pCO2ref = isnothing(pCO2ref) ? mean(skipmissing(pco2_obs)) : pCO2ref
+
+    γ = 0.0423   # sensitivity (per °C)
+
+    ΔT = sst .- Tref
+    ΔpCO2_thermal = pCO2ref .* γ .* ΔT
+    ΔpCO2_nonthermal = (pco2_obs .- pCO2ref) .- ΔpCO2_thermal
+
+    return ΔpCO2_thermal, ΔpCO2_nonthermal
+end
+
+thermal, nonthermal = pco2_components(pCO2_obs, sst)
+
+## creation of a plot with two subplots (one for thermal and one for non-thermal)
+using Plots
+
+# Masque pour la zone de surface
+mask = pr_grid .<= 100
+vals = thermal
+# Heatmap thermique
+P6 = Plots.heatmap(uniq_years, pr_grid[mask], vals,
+    yflip=true, xlabel="Year", ylabel="Pressure (db)",
+    colorbar=true, title="pCO2 thermal component",
+    cmap=:bwr)
+    vals = nonthermal
+# Heatmap non-thermique
+P7 = Plots.heatmap(uniq_years, pr_grid[mask], vals,
+    yflip=true, xlabel="Year", ylabel="Pressure (db)",
+    colorbar=true, title="pCO2 non-thermal component",
+    cmap=:bwr)
+
+# Les combiner en subplot 2 lignes, 1 colonne
+P8=Plots.plot(P6, P7, layout=(2,1), size=(800,600))
+savefig(P8, joinpath(git_root, "data_output/BATS", "BATS_pCO2_therm_nontherm_time.png"))

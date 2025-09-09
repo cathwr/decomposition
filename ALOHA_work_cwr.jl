@@ -823,11 +823,102 @@ for (i, yr) in enumerate(uniq_years)
 end
 
 
+P5 = Plots.heatmap(uniq_years, pr_grid, profile_mat,
+    xlabel="Year", ylabel="Pressure (db)",
+    title="pCO2 profiles over Time",
+    yflip=true, ylim=(0,1000),
+    colorbar=true) ### La colorbar ne s'adapte pas automatiquement si je coupe l'echelle y, je dois la modifier modifier manuellement
+savefig(P5, joinpath(git_root, "data_output/ALOHA", "ALOHA_pCO2_time.png"))
+    ### Code ci-dessous avec ajustement de la colorbar si je coupe l'echelle y
 
-P5=Plots.heatmap(uniq_years, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
-ylabel="Pressure (db)", title="Θredistri profiles over Time", yflip=true, ylim=(0,1000),colorbar=true,cmap=:bwr,
-clim=(300,1200),)
+    mask = pr_grid .<= 300
+vals = profile_mat[mask, :]
+P6=Plots.heatmap(uniq_years, pr_grid[mask], vals,
+    yflip=true, xlabel="Year", ylabel="Pressure (db)",
+  colorbar=true, #   cmap=:bwr
+    clim=(minimum(vals), maximum(vals)))
 
 #Plots.contour!(uniq_years, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
 
- savefig(P5, joinpath(git_root, "data_output/ALOHA", "ALOHA_temperature_redistri_time.png"))
+ savefig(P6, joinpath(git_root, "data_output/ALOHA", "ALOHA_pCO2_300m_time.png"))
+
+ using Statistics
+
+"""
+    pco2_components(pco2_obs, sst; Tref=nothing, pCO2ref=nothing)
+
+Decompose observed pCO2 time series into thermal and non-thermal components.
+
+- `pco2_obs`: Vector of observed pCO2 (µatm)
+- `sst`: Vector of sea surface temperature (°C), same length
+- `Tref`: reference temperature (default = mean(sst))
+- `pCO2ref`: reference pCO2 (default = mean(pco2_obs))
+"""
+
+profile_mat_sst = fill(NaN, length(pr_grid), length(uniq_years))
+
+for (i, yr) in enumerate(uniq_years)         #loop to determine the sst profile mat 
+    idx = findall(year.(date) .== yr)
+    vals = A[idx, 41]
+    depths = A[idx, 43]
+
+    if length(vals) < 20
+        profile_mat_sst[:, i] .= NaN
+        continue
+    end
+
+    # tri par profondeur
+    p = sortperm(depths)
+    depths_sorted = depths[p]
+    vals_sorted   = vals[p]
+
+    # interpolation linéaire + extrapolation (NaN en dehors)
+    itp = extrapolate(interpolate((depths_sorted,), vals_sorted, Gridded(Linear())), NaN)
+
+    profile_mat_sst[:, i] = [itp(d) for d in pr_grid]
+end
+
+mask = pr_grid .<= 100
+sst = profile_mat_sst[mask, :]
+pCO2_obs = profile_mat[mask, :]
+pCO2ref = mean(filter(!isnan, pCO2_obs))
+Tref = mean(filter(!isnan, sst))  
+function pco2_components(pco2_obs, sst; Tref=Tref, pCO2ref=pCO2ref)
+    @assert length(pco2_obs) == length(sst)
+
+    # defaults
+    Tref = isnothing(Tref) ? mean(skipmissing(sst)) : Tref
+    pCO2ref = isnothing(pCO2ref) ? mean(skipmissing(pco2_obs)) : pCO2ref
+
+    γ = 0.0423   # sensitivity (per °C)
+
+    ΔT = sst .- Tref
+    ΔpCO2_thermal = pCO2ref .* γ .* ΔT
+    ΔpCO2_nonthermal = (pco2_obs .- pCO2ref) .- ΔpCO2_thermal
+
+    return ΔpCO2_thermal, ΔpCO2_nonthermal
+end
+
+thermal, nonthermal = pco2_components(pCO2_obs, sst)
+
+## creation of a plot with two subplots (one for thermal and one for non-thermal)
+using Plots
+
+# Masque pour la zone de surface
+mask = pr_grid .<= 100
+vals = thermal
+# Heatmap thermique
+P6 = Plots.heatmap(uniq_years, pr_grid[mask], vals,
+    yflip=true, xlabel="Year", ylabel="Pressure (db)",
+    colorbar=true, title="pCO2 thermal component",
+    cmap=:bwr)
+    vals = nonthermal
+# Heatmap non-thermique
+P7 = Plots.heatmap(uniq_years, pr_grid[mask], vals,
+    yflip=true, xlabel="Year", ylabel="Pressure (db)",
+    colorbar=true, title="pCO2 non-thermal component",
+    cmap=:bwr)
+
+# Les combiner en subplot 2 lignes, 1 colonne
+P8=Plots.plot(P6, P7, layout=(2,1), size=(800,600))
+savefig(P8, joinpath(git_root, "data_output/ALOHA", "ALOHA_pCO2_therm_nontherm_time.png"))
