@@ -192,13 +192,18 @@ SAL = filtered_df[!, :Salinity]
 TMP = filtered_df[!, :Temperature]
 LAT = filtered_df[!, :Latitude_N] |> float
 LON = filtered_df[!, :Longitude_W] |> float
+PRS = filtered_df[!, :Pressure_db]
+
+# Calculate potential temperature
+SA = gsw.SA_from_SP(SAL, PRS, LON, LAT) # Absolute Salinity
+THETA = gsw.pt_from_t(SA, TMP, PRS, p_ref=0.0) # potential temperature
+
 
 # Coordinates
-PRS = filtered_df[!, :Pressure_db]
 TIME = filtered_df[!, :decimal_year]
 
 DIC_mean = mean(DIC[.!isnan.(DIC)])
-TMP_mean = mean(TMP[.!isnan.(TMP)])
+TMP_mean = mean(THETA[.!isnan.(THETA)])  #TMP_mean = mean(TMP[.!isnan.(TMP)])  old version
 SAL_mean = mean(SAL[.!isnan.(SAL)])
 
 
@@ -484,7 +489,7 @@ sorted_pairs = sort(collect(redist_temp_profiles), by=first)
 sorted_columns = [Symbol(k)=>v for (k,v) in sorted_pairs]
 
 DataFrame(;[Symbol(k)=>v for (k,v) in redist_temp_profiles]..., Pressure_db=pr_grid) |>
-    CSV.write(joinpath(git_root, "output_files", "bats_redist_temp_profiles.csv"), header=true)
+    CSV.write(joinpath(git_root, "output_files", "BATS_redist_temp_profiles.csv"), header=true)
 
 
 
@@ -620,3 +625,107 @@ ylabel="Pressure (db)", title="BATS - SAL-redistri profiles over time", yflip=tr
 #clim=(-0.5,0.5),)
 Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
 savefig(P15, joinpath(git_root, "data_output/BATS", "BATS_salinity_redistri_time_OTHER_FUNCTION.png"))
+
+
+
+function decompose_DIC(init_temp::Vector{Float64},final_temp::Vector{Float64}
+    ,init_DIC::Vector{Float64},final_DIC::Vector{Float64}
+    ;transient_val::Float64=0.017
+    ,gaussian_width::Float64=0.0001)::Tuple{Vector{Float64}, Vector{Float64}} # tuples have a fixed size and their elements can have different types
+ 
+#= 
+The gaussain width is used to switch out the more complicated decomposition 
+(mat2) with the simpler one (mat1) when the DIC gradient is small. This is 
+what I got from cancelling the infinities out on paper - they wont on a computer 
+unfortunately, so it has to be done by hand.
+=#
+
+@assert size(init_temp) == size(final_temp) &&
+size(init_DIC) == size(final_DIC) &&
+size(init_temp) == size(init_DIC) "All input vectors (\"init_temp\", \"final_temp\", \"init_DIC\", \"final_DIC\") must have the same size"
+
+VEC_LENGTH::Int64 = length(init_temp)
+
+ζ = central_diff(init_DIC)
+ξ = central_diff(init_temp)
+
+κr = ξ ./ ζ
+
+
+weight1 = gaussian(ζ,σ = gaussian_width)
+weight2 = (weight1 .- 1.0) ./ (transient_val .-  κr )
+
+mat1 = fill(NaN,2,2,VEC_LENGTH)
+mat2 = fill(NaN,2,2,VEC_LENGTH)
+mat3 = fill(NaN,2,2,VEC_LENGTH)
+
+for i = 1:length(κr)
+mat1[:,:,i] = [0               transient_val
+;1              -transient_val]
+
+mat2[:,:,i] = [-1   κr[i]
+;1          -transient_val]
+
+mat3[:,:,i] = [(1/transient_val) 0
+;0              (1/κr[i])]
+end
+
+ΔΘ = final_temp - init_temp
+ΔDIC = final_DIC - init_DIC
+
+input_vec = fill(NaN,2,VEC_LENGTH); output_vec = copy(input_vec)
+input_vec[1,:] = ΔΘ
+input_vec[2,:] = ΔDIC
+
+for i =1:VEC_LENGTH
+output_vec[:,i] = (weight1[i] * (mat1[:,:,i] * mat3[:,:,i]) + weight2[i] * mat2[:,:,i]) * input_vec[:,i]
+end
+
+excess_DIC = output_vec[1,:]
+redist_DIC = output_vec[2,:]
+
+return excess_DIC, redist_DIC
+
+end
+
+excess_DIC_profiles = Dict{Float64, Vector{Float64}}()
+redist_DIC_profiles = Dict{Float64, Vector{Float64}}()
+
+
+init_date = uniq_dates[101] # Change this if you want to use a different init_date.
+# Currently, set to the last date in 1996
+println("Using $init_date as the initial date")
+
+for date in uniq_dates
+    excess_DIC_profiles[date], redist_DIC_profiles[date] = decompose_DIC(
+        gridded_TMP[init_date], gridded_TMP[date],
+        gridded_DIC[init_date], gridded_DIC[date],
+        transient_val=0.017,
+        gaussian_width=0.0001
+    )
+end
+
+
+## Plot Temp excess versus time as a heatmap
+profile_mat = zeros(length(pr_grid), length(uniq_dates))
+for (i, yr) in enumerate(uniq_dates)
+profile_mat[:, i] = excess_DIC_profiles[yr]
+end
+
+P4=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
+ylabel="Pressure (db)", title="BATS - DIC_excess profiles over time", yflip=true, colorbar=true, cmap=:bwr,)
+#clim=(-0.5,0.5),)
+Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
+savefig(P4, joinpath(git_root, "data_output/BATS", "BATS_DIC_excess_time.png"))
+
+## Plot Temp redistri versus time as a heatmap
+profile_mat = zeros(length(pr_grid), length(uniq_dates))
+for (i, yr) in enumerate(uniq_dates)
+profile_mat[:, i] = redist_DIC_profiles[yr]
+end
+
+P5=Plots.heatmap(uniq_dates, pr_grid, profile_mat, color=:viridis, xlabel="Year", 
+ylabel="Pressure (db)", title="DIC redistri profiles over Time", yflip=true, colorbar=true, cmap=:bwr,)
+#clim=(-0.5,0.5),)
+Plots.contour!(uniq_dates, pr_grid, profile_mat, color=:black, alpha=0.5, levels=[0.0], linewidth=2)
+savefig(P5, joinpath(git_root, "data_output/BATS", "BATS_DIC_redistri_time.png"))
